@@ -7,6 +7,9 @@ export type CartExtra = {
 export type CartItem = {
   id: string;
   foodId: string;
+  menuItemId?: string;
+  variantId?: string;
+  branchCode?: string;
   name: string;
   image: string;
 
@@ -16,6 +19,9 @@ export type CartItem = {
   sizePrice: number;
 
   extras: CartExtra[];
+
+  /** Ingredients left out, e.g. ["onions"] → "No onions". */
+  removed?: string[];
 
   quantity: number;
 

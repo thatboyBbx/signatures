@@ -1,5 +1,7 @@
+import { AppState } from 'react-native';
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
@@ -16,6 +18,8 @@ import { useAuth } from './AuthContext';
 
 type OrderContextValue = {
   orders: Order[];
+  reloadOrders: () => void;
+  lastUpdated: string;
   loading: boolean;
   loadError: string | null;
   addOrder: (order: Order) => void;
@@ -38,6 +42,9 @@ export function OrderProvider({
   children: ReactNode;
 }) {
   const { customer } = useAuth();
+  const [revision, setRevision] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState('');
+  const reloadOrders = useCallback(() => setRevision(value => value + 1), []);
   const [orders, setOrders] =
     useState<Order[]>([]);
   const [loading, setLoading] =
@@ -73,7 +80,10 @@ export function OrderProvider({
       };
     }
 
+    if (process.env.EXPO_PUBLIC_UI_PREVIEW === '1') return;
+    let inFlight = false;
     async function loadOrders() {
+      if (inFlight) return; inFlight = true;
       try {
         setLoading(true);
         setLoadError(null);
@@ -82,6 +92,7 @@ export function OrderProvider({
 
         if (!cancelled) {
           setOrders(apiOrders.map(mapApiOrder));
+          setLastUpdated(new Date().toISOString());
         }
       } catch (error) {
         console.error(
@@ -95,6 +106,7 @@ export function OrderProvider({
           );
         }
       } finally {
+        inFlight = false;
         if (!cancelled) {
           setLoading(false);
         }
@@ -102,11 +114,10 @@ export function OrderProvider({
     }
 
     void loadOrders();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [customer?.id]);
+    const interval = setInterval(() => { if (AppState.currentState === 'active') void loadOrders(); }, 15000);
+    const subscription = AppState.addEventListener('change', state => { if (state === 'active') void loadOrders(); });
+    return () => { cancelled = true; clearInterval(interval); subscription.remove(); };
+  }, [customer?.id, revision]);
 
   const addOrder = (order: Order) => {
     upsertOrder(order);
@@ -132,6 +143,8 @@ export function OrderProvider({
     <OrderContext.Provider
       value={{
         orders,
+        reloadOrders,
+        lastUpdated,
         loading,
         loadError,
         addOrder,

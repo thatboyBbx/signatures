@@ -1,10 +1,10 @@
-﻿import { Ionicons } from '@expo/vector-icons';
+import { ParamountPhoto as Image } from '../../../components/ParamountPressable';
+import { ParamountPressable as Pressable } from '../../../components/ParamountPressable';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
-  Image,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,9 +13,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useOrders } from '../../../context/OrderContext';
+import { makePreviewOrder, PREVIEW_ORDER_ID } from '../../../sample-data/previewOrder';
+import { useReorder } from '../useReorder';
+import { branchName } from '../../../services/venuesApi';
+import { Skeleton } from '../../../components/Skeleton';
+import { useState } from 'react';
 import type { RootStackParamList } from '../../../navigation/AppNavigator';
 import type { Order, OrderStatus } from '../../../types/order';
-import { colors, radius, spacing } from '../../../theme/theme';
+import { colors, radius, spacing, fonts } from '../../../theme/theme';
 
 type Navigation = NativeStackNavigationProp<RootStackParamList>;
 
@@ -80,9 +85,11 @@ function getStatusIcon(status: OrderStatus) {
 function OrderCard({
   order,
   onPress,
+  onReorder,
 }: {
   order: Order;
   onPress: () => void;
+  onReorder?: () => void;
 }) {
   const previewImage = order.items[0]?.image;
 
@@ -106,7 +113,7 @@ function OrderCard({
               style={styles.restaurantName}
               numberOfLines={1}
             >
-              {order.restaurantName}
+              {branchName(order.restaurantName)}
             </Text>
 
             <Text style={styles.orderNumber}>
@@ -175,13 +182,13 @@ function OrderCard({
 
           <View>
             <Text style={styles.statusLabel}>
-              {getStatusLabel(order.status)}
+              {order.orderType === 'pickup' && order.status === 'delivered' ? 'Collected' : getStatusLabel(order.status)}
             </Text>
 
             {order.status !== 'delivered' &&
               order.status !== 'cancelled' && (
                 <Text style={styles.statusHint}>
-                  Estimated 20–30 min
+                  {order.orderType === 'pickup' ? 'Branch collection' : 'Follow delivery updates'}
                 </Text>
               )}
           </View>
@@ -193,6 +200,13 @@ function OrderCard({
               Track
             </Text>
           )}
+
+        {order.status === 'delivered' && onReorder && (
+          <Pressable accessibilityRole="button" accessibilityLabel={`Reorder ${order.id}`} style={styles.reorderButton} onPress={onReorder}>
+            <Ionicons name="repeat" size={15} color={colors.onDark} />
+            <Text style={styles.reorderText}>Reorder</Text>
+          </Pressable>
+        )}
       </View>
     </Pressable>
   );
@@ -204,7 +218,18 @@ export function OrdersScreen() {
     orders,
     loading,
     loadError,
+    reloadOrders,
+    lastUpdated,
+    addOrder,
   } = useOrders();
+  const reorder = useReorder();
+  const [reorderNote, setReorderNote] = useState<string | null>(null);
+  const doReorder = (order: Order) => {
+    const result = reorder(order);
+    if (!result.added) { setReorderNote(`None of the items from ${order.id} are on the menu right now.`); return; }
+    setReorderNote(result.missing.length ? `Added to your tray. Not available today: ${result.missing.join(', ')}.` : null);
+    navigation.navigate('Cart');
+  };
 
   const activeOrders = orders.filter(
     (order) =>
@@ -247,16 +272,21 @@ export function OrdersScreen() {
           </View>
         </View>
 
-        {loading ? (
-          <View style={styles.empty}>
-            <ActivityIndicator
-              size="large"
-              color={colors.primary}
-            />
-
-            <Text style={styles.emptyTitle}>
-              Loading your orders...
-            </Text>
+        <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:16}}><Text style={{fontFamily:fonts.body,fontSize:10,color:colors.textSecondary}}>{lastUpdated ? `Updated ${new Date(lastUpdated).toLocaleTimeString('en-GB',{timeZone:'Africa/Harare'})}` : ''}</Text><Pressable accessibilityLabel="Refresh orders" style={{padding:14}} onPress={reloadOrders}><Text style={{fontFamily:fonts.bold}}>Refresh</Text></Pressable></View>
+        {reorderNote && <Text accessibilityRole="alert" style={{ fontFamily: fonts.body, fontSize: 13, color: colors.primary, marginBottom: 12 }}>{reorderNote}</Text>}
+        {loadError && orders.length > 0 && <Text accessibilityRole="alert" style={{color:colors.error}}>{loadError} Showing the last saved update.</Text>}
+        {loading && orders.length === 0 ? (
+          <View accessibilityLabel="Loading your orders" style={{ gap: 14 }}>
+            {[0, 1, 2].map(index => <View key={index} style={[styles.orderCard, { gap: 14 }]}>
+              <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                <Skeleton width={40} height={40} radius={20} />
+                <View style={{ flex: 1, gap: 8 }}><Skeleton width="60%" height={14} /><Skeleton width="35%" height={10} /></View>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <Skeleton width={64} height={64} radius={12} />
+                <View style={{ flex: 1, gap: 8, justifyContent: 'center' }}><Skeleton width="85%" height={12} /><Skeleton width="45%" height={12} /></View>
+              </View>
+            </View>)}
           </View>
         ) : loadError && orders.length === 0 ? (
           <View style={styles.empty}>
@@ -310,9 +340,21 @@ export function OrdersScreen() {
               <Ionicons
                 name="arrow-forward"
                 size={18}
-                color="#FFFFFF"
+                color={colors.surface}
               />
             </Pressable>
+
+            {process.env.EXPO_PUBLIC_UI_PREVIEW === '1' && <Pressable
+              accessibilityRole="button"
+              style={styles.previewTrackingButton}
+              onPress={() => {
+                addOrder(makePreviewOrder());
+                navigation.navigate('OrderTracking', { orderId: PREVIEW_ORDER_ID });
+              }}
+            >
+              <Ionicons name="navigate-outline" size={17} color={colors.primary} />
+              <Text style={styles.previewTrackingText}>Preview live tracking</Text>
+            </Pressable>}
           </View>
         ) : (
           <>
@@ -357,6 +399,7 @@ export function OrdersScreen() {
                   <OrderCard
                     key={order.id}
                     order={order}
+                    onReorder={() => doReorder(order)}
                     onPress={() =>
                       navigation.navigate(
                         'OrderTracking',
@@ -398,16 +441,18 @@ const styles = StyleSheet.create({
   },
 
   eyebrow: {
+    fontFamily: fonts.heavy,
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '400',
     letterSpacing: 1.6,
     color: colors.primary,
   },
 
   title: {
+    fontFamily: fonts.heading,
     marginTop: 5,
     fontSize: 29,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
@@ -434,8 +479,9 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
+    fontFamily: fonts.heading,
     fontSize: 19,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
     marginBottom: 13,
   },
@@ -452,9 +498,10 @@ const styles = StyleSheet.create({
   },
 
   activeBadgeText: {
-    color: '#FFFFFF',
+    fontFamily: fonts.heavy,
+    color: colors.surface,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '400',
   },
 
   orderCard: {
@@ -482,7 +529,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#FFF0EA',
+    backgroundColor: colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -493,12 +540,14 @@ const styles = StyleSheet.create({
   },
 
   restaurantName: {
+    fontFamily: fonts.heading,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
   orderNumber: {
+    fontFamily: fonts.body,
     marginTop: 3,
     fontSize: 10,
     color: colors.textSecondary,
@@ -524,7 +573,7 @@ const styles = StyleSheet.create({
     width: 74,
     height: 74,
     borderRadius: radius.lg,
-    backgroundColor: '#FFF0EA',
+    backgroundColor: colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -536,16 +585,18 @@ const styles = StyleSheet.create({
   },
 
   itemsText: {
+    fontFamily: fonts.bold,
     fontSize: 13,
     lineHeight: 19,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.text,
   },
 
   orderMeta: {
+    fontFamily: fonts.bold,
     marginTop: 6,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.textSecondary,
   },
 
@@ -568,27 +619,30 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#FFF0EA',
+    backgroundColor: colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
   },
 
   statusLabel: {
+    fontFamily: fonts.heavy,
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
   statusHint: {
+    fontFamily: fonts.body,
     marginTop: 2,
     fontSize: 10,
     color: colors.textSecondary,
   },
 
   trackText: {
+    fontFamily: fonts.heavy,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.primary,
   },
 
@@ -603,19 +657,21 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: '#FFF0EA',
+    backgroundColor: colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   emptyTitle: {
+    fontFamily: fonts.heading,
     marginTop: 21,
     fontSize: 21,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
   emptyDescription: {
+    fontFamily: fonts.body,
     marginTop: 8,
     maxWidth: 280,
     textAlign: 'center',
@@ -629,19 +685,24 @@ const styles = StyleSheet.create({
     marginTop: 23,
     paddingHorizontal: 22,
     borderRadius: radius.pill,
-    backgroundColor: colors.black,
+    backgroundColor: colors.cta, borderWidth: 1, borderColor: colors.ctaBorder,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
 
   orderFoodButtonText: {
-    color: '#FFFFFF',
+    fontFamily: fonts.heavy,
+    color: colors.surface,
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '400',
   },
 
   bottomSpace: {
     height: 20,
   },
+  previewTrackingButton: { marginTop: 12, minHeight: 46, paddingHorizontal: 18, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  previewTrackingText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.primary },
+  reorderButton: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, paddingHorizontal: 14, borderRadius: 18, backgroundColor: colors.cta, borderWidth: 1, borderColor: colors.ctaBorder },
+  reorderText: { fontFamily: fonts.semibold, fontSize: 12, color: colors.onDark },
 });

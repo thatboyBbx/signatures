@@ -25,6 +25,7 @@ export type OrderDriver = {
 };
 
 export type Order = {
+  orderType?: 'delivery' | 'pickup';
   id: string;
 
   restaurantName: string;
@@ -34,6 +35,8 @@ export type Order = {
   itemCount: number;
 
   subtotal: number;
+  /** Promo discount, when a code was used. */
+  discount?: number;
   deliveryFee: number;
   total: number;
 

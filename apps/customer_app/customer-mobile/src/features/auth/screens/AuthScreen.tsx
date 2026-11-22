@@ -1,26 +1,30 @@
+import { ParamountMark } from '../../../components/ParamountMark';
+import { ParamountPressable as Pressable } from '../../../components/ParamountPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { AtmosphereVideo } from '../../../components/AtmosphereVideo';
+import { AtmosphereProvider } from '../../../context/AtmosphereContext';
 
 import { useAuth } from '../../../context/AuthContext';
-import { colors, radius, spacing } from '../../../theme/theme';
+import { colors, radius, spacing, fonts } from '../../../theme/theme';
 
 type Mode = 'sign-in' | 'sign-up';
 
 export function AuthScreen() {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, startPreview } = useAuth();
   const [mode, setMode] =
     useState<Mode>('sign-in');
   const [fullName, setFullName] = useState('');
@@ -29,27 +33,26 @@ export function AuthScreen() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] =
     useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const previewEnabled = process.env.EXPO_PUBLIC_UI_PREVIEW === '1';
+  const [showPassword, setShowPassword] = useState(false);
+  const { height } = useWindowDimensions();
 
   const isSignUp = mode === 'sign-up';
 
   const submit = async () => {
+    setFormError(null);
     if (
       !email.trim() ||
       !password ||
       (isSignUp && !fullName.trim())
     ) {
-      Alert.alert(
-        'Missing details',
-        'Please complete the required fields.',
-      );
+      setFormError('Please complete the required fields.');
       return;
     }
 
     if (password.length < 8) {
-      Alert.alert(
-        'Password too short',
-        'Use at least 8 characters.',
-      );
+      setFormError('Use a password with at least 8 characters.');
       return;
     }
 
@@ -65,166 +68,100 @@ export function AuthScreen() {
         });
 
         if (result.requiresEmailConfirmation) {
-          Alert.alert(
-            'Confirm your email',
-            'Check your email, confirm your account, then return here to log in.',
-          );
+          setFormError('Check your email to confirm your account, then log in.');
           setMode('sign-in');
         }
       } else {
         await signIn(email.trim(), password);
       }
     } catch (error) {
-      Alert.alert(
-        isSignUp ? 'Sign up failed' : 'Login failed',
-        error instanceof Error
-          ? error.message
-          : 'Please try again.',
-      );
+      setFormError(error instanceof TypeError
+        ? 'The account server is unavailable in this local preview. No account was created.'
+        : error instanceof Error ? error.message : 'Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        style={styles.safe}
-        behavior={
-          Platform.OS === 'ios' ? 'padding' : undefined
-        }
-      >
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.content}
-        >
-          <View style={styles.brandIcon}>
-            <Ionicons
-              name="restaurant"
-              size={29}
-              color="#FFFFFF"
-            />
+    <View style={styles.safe}>
+      <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
+          <View style={[styles.hero, { height: Math.min(360, Math.max(270, height * 0.38)) }]}>
+            <AtmosphereProvider><AtmosphereVideo variant="grill" /></AtmosphereProvider>
+            <LinearGradient pointerEvents="none" colors={['rgba(17,12,8,0.62)', 'rgba(17,12,8,0.2)', 'rgba(17,12,8,0.88)']} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFill} />
+            <SafeAreaView edges={['top']} style={styles.brandRow}>
+              <ParamountMark size={34} color={colors.onDark} />
+              <View accessibilityLabel="Paramount Signature"><Text style={styles.brandName}>Paramount</Text><Text style={styles.brandItalic}>Signature</Text></View>
+            </SafeAreaView>
+            <View style={styles.heroCopy}>
+              <Text accessibilityRole="header" style={styles.heroTitle}>{isSignUp ? 'Join the table.' : 'Welcome back.'}</Text>
+              <Text style={styles.heroItalic}>{isSignUp ? 'Your seat is waiting.' : 'Good food is waiting.'}</Text>
+            </View>
           </View>
 
-          <Text style={styles.eyebrow}>
-            SIGNATURES
-          </Text>
+          <View style={styles.sheet}>
+            <View style={styles.sheetInner}>
+              <View accessibilityRole="tablist" style={styles.segment}>
+                {(['sign-in', 'sign-up'] as const).map(option => {
+                  const active = mode === option;
+                  return <Pressable key={option} accessibilityRole="tab" accessibilityState={{ selected: active }} aria-selected={active}
+                    onPress={() => { setMode(option); setFormError(null); }} style={[styles.segmentItem, active && styles.segmentActive]}>
+                    <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{option === 'sign-in' ? 'Log in' : 'Create account'}</Text>
+                  </Pressable>;
+                })}
+              </View>
 
-          <Text style={styles.title}>
-            {isSignUp
-              ? 'Create your account'
-              : 'Welcome back'}
-          </Text>
-
-          <Text style={styles.description}>
-            {isSignUp
-              ? 'Save your orders and follow every delivery from the kitchen to your door.'
-              : 'Log in to order food and see your live delivery progress.'}
-          </Text>
-
-          <View style={styles.form}>
-            {isSignUp && (
-              <>
-                <Field
-                  label="Full name"
-                  icon="person-outline"
-                  value={fullName}
-                  onChangeText={setFullName}
-                  placeholder="Your full name"
-                  autoCapitalize="words"
-                />
-
-                <Field
-                  label="Phone (optional)"
-                  icon="call-outline"
-                  value={phone}
-                  onChangeText={setPhone}
-                  placeholder="+263 ..."
-                  keyboardType="phone-pad"
-                />
-              </>
-            )}
-
-            <Field
-              label="Email"
-              icon="mail-outline"
-              value={email}
-              onChangeText={setEmail}
-              placeholder="you@example.com"
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-
-            <Field
-              label="Password"
-              icon="lock-closed-outline"
-              value={password}
-              onChangeText={setPassword}
-              placeholder="At least 8 characters"
-              autoCapitalize="none"
-              secureTextEntry
-            />
-
-            <Pressable
-              style={[
-                styles.primaryButton,
-                submitting && styles.buttonDisabled,
-              ]}
-              disabled={submitting}
-              onPress={() => void submit()}
-            >
-              {submitting ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <>
-                  <Text style={styles.primaryButtonText}>
-                    {isSignUp
-                      ? 'Create account'
-                      : 'Log in'}
-                  </Text>
-
-                  <Ionicons
-                    name="arrow-forward"
-                    size={19}
-                    color="#FFFFFF"
-                  />
-                </>
-              )}
-            </Pressable>
-          </View>
-
-          <View style={styles.switchRow}>
-            <Text style={styles.switchPrompt}>
-              {isSignUp
-                ? 'Already have an account?'
-                : 'New to Signatures?'}
-            </Text>
-
-            <Pressable
-              onPress={() =>
-                setMode(
-                  isSignUp ? 'sign-in' : 'sign-up',
-                )
-              }
-            >
-              <Text style={styles.switchAction}>
-                {isSignUp ? 'Log in' : 'Sign up'}
+              <Text style={styles.description}>
+                {isSignUp ? 'Create an account to order, save your favourites and follow every delivery to your door.' : 'Log in with the email you registered with Signatures.'}
               </Text>
-            </Pressable>
+
+              <View style={styles.form}>
+                {formError && <View accessibilityRole="alert" style={styles.errorBox}><Ionicons name="alert-circle-outline" size={18} color={colors.error} /><Text style={styles.errorText}>{formError}</Text></View>}
+                {isSignUp && <>
+                  <Field label="Full name" icon="person-outline" value={fullName} onChangeText={setFullName} placeholder="As it appears on your ID" autoCapitalize="words" textContentType="name" />
+                  <Field label="Phone (optional)" icon="call-outline" value={phone} onChangeText={setPhone} placeholder="+263 7X XXX XXXX" keyboardType="phone-pad" textContentType="telephoneNumber" />
+                </>}
+                <Field label="Email address" icon="mail-outline" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" textContentType="emailAddress" />
+                <Field label="Password" icon="lock-closed-outline" value={password} onChangeText={setPassword} placeholder="At least 8 characters" autoCapitalize="none" secureTextEntry={!showPassword} textContentType={isSignUp ? 'newPassword' : 'password'}
+                  trailing={<Pressable accessibilityRole="button" accessibilityLabel={showPassword ? 'Hide password' : 'Show password'} hitSlop={10} onPress={() => setShowPassword(value => !value)}>
+                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={19} color={colors.textSecondary} /></Pressable>} />
+
+                <Pressable style={[styles.primaryButton, submitting && styles.buttonDisabled]} disabled={submitting} onPress={() => void submit()}>
+                  {submitting ? <ActivityIndicator color={colors.onDark} /> : <>
+                    <Text style={styles.primaryButtonText}>{isSignUp ? 'Create account' : 'Log in'}</Text>
+                    <Ionicons name="arrow-forward" size={19} color={colors.onDark} />
+                  </>}
+                </Pressable>
+              </View>
+
+              {previewEnabled && <View style={styles.previewBlock}>
+                <View style={styles.dividerRow}><View style={styles.dividerLine} /><Text style={styles.dividerText}>OR</Text><View style={styles.dividerLine} /></View>
+                <Pressable onPress={startPreview} style={styles.secondaryButton}>
+                  <Ionicons name="eye-outline" size={18} color={colors.text} />
+                  <Text style={styles.secondaryButtonText}>Explore the UI preview</Text>
+                </Pressable>
+                <Text style={styles.finePrint}>Demo screens only. No account or order is created.</Text>
+              </View>}
+
+              <Text style={styles.finePrint}>Signatures · Harare</Text>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 function Field({
   label,
   icon,
+  trailing,
   ...inputProps
 }: {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
+  trailing?: React.ReactNode;
 } & React.ComponentProps<typeof TextInput>) {
   return (
     <View style={styles.fieldBlock}>
@@ -238,115 +175,49 @@ function Field({
         />
 
         <TextInput
+          accessibilityLabel={label}
           {...inputProps}
           style={styles.input}
-          placeholderTextColor="#A0A0A6"
+          placeholderTextColor={colors.textSecondary}
         />
+        {trailing}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.xl,
-    paddingTop: 50,
-    paddingBottom: 35,
-    justifyContent: 'center',
-  },
-  brandIcon: {
-    width: 62,
-    height: 62,
-    borderRadius: 20,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  eyebrow: {
-    marginTop: 24,
-    color: colors.primary,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-  },
-  title: {
-    marginTop: 8,
-    color: colors.text,
-    fontSize: 31,
-    lineHeight: 38,
-    fontWeight: '900',
-  },
-  description: {
-    marginTop: 10,
-    maxWidth: 350,
-    color: colors.textSecondary,
-    fontSize: 14,
-    lineHeight: 21,
-  },
-  form: {
-    marginTop: 30,
-    gap: 15,
-  },
-  fieldBlock: {
-    gap: 7,
-  },
-  fieldLabel: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  field: {
-    height: 56,
-    paddingHorizontal: 15,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  input: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 14,
-  },
-  primaryButton: {
-    height: 58,
-    marginTop: 6,
-    borderRadius: radius.xl,
-    backgroundColor: colors.black,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  switchRow: {
-    marginTop: 24,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 5,
-  },
-  switchPrompt: {
-    color: colors.textSecondary,
-    fontSize: 13,
-  },
-  switchAction: {
-    color: colors.primary,
-    fontSize: 13,
-    fontWeight: '900',
-  },
+  safe: { flex: 1, backgroundColor: colors.background },
+  hero: { backgroundColor: colors.black, overflow: 'hidden' },
+  brandRow: { position: 'absolute', left: 24, right: 24, top: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  brandName: { fontFamily: fonts.heading, fontSize: 24, lineHeight: 25, color: colors.onDark },
+  brandItalic: { fontFamily: fonts.headingItalic, fontSize: 17, lineHeight: 19, color: colors.onDark, marginTop: -2 },
+  heroCopy: { position: 'absolute', left: 24, right: 24, bottom: 46 },
+  heroTitle: { fontFamily: fonts.heading, fontSize: 42, lineHeight: 46, color: colors.onDark },
+  heroItalic: { fontFamily: fonts.headingItalic, fontSize: 26, lineHeight: 32, color: colors.gold },
+  sheet: { flex: 1, marginTop: -26, backgroundColor: colors.background, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
+  sheetInner: { width: '100%', maxWidth: 480, alignSelf: 'center', paddingHorizontal: 24, paddingTop: 26, paddingBottom: 34, gap: 16 },
+  segment: { flexDirection: 'row', padding: 4, borderRadius: 999, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border },
+  segmentItem: { flex: 1, minHeight: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  segmentActive: { backgroundColor: colors.cta, borderWidth: 1, borderColor: colors.ctaBorder },
+  segmentText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textSecondary },
+  segmentTextActive: { color: colors.onDark },
+  description: { fontFamily: fonts.body, color: colors.textSecondary, fontSize: 14, lineHeight: 21 },
+  form: { gap: 15 },
+  errorBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.error, backgroundColor: colors.surface },
+  errorText: { flex: 1, fontFamily: fonts.medium, fontSize: 13, lineHeight: 19, color: colors.error },
+  fieldBlock: { gap: 7 },
+  fieldLabel: { fontFamily: fonts.semibold, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', color: colors.textSecondary },
+  field: { height: 56, paddingHorizontal: 16, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  input: { fontFamily: fonts.body, flex: 1, color: colors.text, fontSize: 15 },
+  primaryButton: { height: 58, marginTop: 6, borderRadius: 29, backgroundColor: colors.cta, borderWidth: 1, borderColor: colors.ctaBorder, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  buttonDisabled: { opacity: 0.6 },
+  primaryButtonText: { fontFamily: fonts.bold, color: colors.onDark, fontSize: 15 },
+  previewBlock: { gap: 12 },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
+  dividerText: { fontFamily: fonts.semibold, fontSize: 10, letterSpacing: 1.6, color: colors.textSecondary },
+  secondaryButton: { height: 54, borderRadius: 27, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  secondaryButtonText: { fontFamily: fonts.semibold, color: colors.text, fontSize: 14 },
+  finePrint: { fontFamily: fonts.body, color: colors.textSecondary, fontSize: 12, textAlign: 'center' },
 });

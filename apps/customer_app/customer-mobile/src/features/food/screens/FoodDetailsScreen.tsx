@@ -1,4 +1,7 @@
-﻿import { Ionicons } from '@expo/vector-icons';
+import { LiveFoodDetails } from './LiveFoodDetails';
+import { ParamountPhoto as Image } from '../../../components/ParamountPressable';
+import { ParamountPressable as Pressable } from '../../../components/ParamountPressable';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type {
   NativeStackNavigationProp,
@@ -6,8 +9,6 @@ import type {
 } from '@react-navigation/native-stack';
 import { useState } from 'react';
 import {
-  Image,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,8 +17,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { RootStackParamList } from '../../../navigation/AppNavigator';
-import { colors, radius, spacing } from '../../../theme/theme';
+import { colors, radius, spacing, fonts } from '../../../theme/theme';
+import { sampleMenu } from '../../../sample-data/menu';
 import { useCart } from '../../../context/CartContext';
+import { haptic } from '../../../components/haptics';
+import { useFavourites } from '../../../context/FavouritesContext';
+import { useRatings } from '../../../context/RatingsContext';
+import { IngredientLine } from '../../../components/TrayBar';
+import { dishOptions, ingredientLine } from '../../../sample-data/dishDetails';
+import { mockFeatures } from '../../../services/mockFeatures';
+import { CustomiseMeal } from '../components/CustomiseMeal';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FoodDetails'>;
 type Navigation = NativeStackNavigationProp<RootStackParamList>;
@@ -30,37 +39,48 @@ const extras = [
   { id: 'drink', name: 'Soft drink', price: 1 },
 ];
 
-const sizePrices: Record<string, number> = {
+export const sizePrices: Record<string, number> = {
   Small: 0,
   Medium: 1.5,
   Large: 3,
 };
 
-export function FoodDetailsScreen() {
+export function FoodDetailsScreen() { return process.env.EXPO_PUBLIC_UI_PREVIEW === '1' ? <PreviewFoodDetailsScreen /> : <LiveFoodDetails />; }
+
+function PreviewFoodDetailsScreen() {
   const navigation = useNavigation<Navigation>();
   const route = useRoute<Props['route']>();
 
   const { name, price, image } = route.params;
   const { addItem } = useCart();
+  const { isFavourite, toggle } = useFavourites();
+  const favourite = isFavourite(name);
+  const dish = sampleMenu.find(item => item.name === name);
+  const line = ingredientLine(name, dish?.description);
+  const options = mockFeatures.customise && dish ? dishOptions(name, dish.category, dish.description) : { remove: [], add: [] };
+  const rating = useRatings().dishRating(name);
+  const [removed, setRemoved] = useState<string[]>([]);
+  const [added, setAdded] = useState<string[]>([]);
 
   const [selectedSize, setSelectedSize] = useState('Small');
   const [quantity, setQuantity] = useState(1);
   const [selectedExtras, setSelectedExtras] = useState<string[]>([]);
 
   const basePrice = Number(price.replace('$', ''));
-  const extrasTotal = extras
-    .filter((extra) => selectedExtras.includes(extra.id))
+  const addOns = options.add.filter(extra => added.includes(extra.id));
+  const extrasTotal = [...extras.filter((extra) => selectedExtras.includes(extra.id)), ...addOns]
     .reduce((total, extra) => total + extra.price, 0);
   const unitPrice = basePrice + sizePrices[selectedSize] + extrasTotal;
   const totalPrice = unitPrice * quantity;
 
   const handleAddToCart = () => {
-    const selectedExtraItems = extras.filter((extra) =>
+    const selectedExtraItems = [...extras.filter((extra) =>
       selectedExtras.includes(extra.id),
-    );
+    ), ...addOns];
+    const keptOut = options.remove.filter(item => removed.includes(item));
 
     addItem({
-      id: `${name}-${selectedSize}-${selectedExtras.slice().sort().join('-')}`,
+      id: `${name}-${selectedSize}-${selectedExtraItems.map(extra => extra.id).sort().join('-')}${keptOut.length ? `-no-${keptOut.slice().sort().join('-')}` : ''}`,
       foodId: name,
       name,
       image,
@@ -68,10 +88,12 @@ export function FoodDetailsScreen() {
       size: selectedSize,
       sizePrice: sizePrices[selectedSize],
       extras: selectedExtraItems,
+      removed: keptOut.length ? keptOut : undefined,
       quantity,
       unitPrice,
       totalPrice,
     });
+    haptic('success');
     navigation.navigate('Cart');
   };
 
@@ -86,17 +108,23 @@ export function FoodDetailsScreen() {
 
           <SafeAreaView style={styles.heroControls} edges={['top']}>
             <Pressable
+              accessibilityLabel="Back"
               style={styles.circleButton}
               onPress={() => navigation.goBack()}
             >
               <Ionicons name="arrow-back" size={21} color={colors.text} />
             </Pressable>
 
-            <Pressable style={styles.circleButton}>
+            <Pressable
+              style={styles.circleButton}
+              accessibilityLabel={favourite ? 'Remove from favourites' : 'Save to favourites'}
+              accessibilityState={{ selected: favourite }}
+              onPress={() => { toggle({ name, price, image }); haptic(); }}
+            >
               <Ionicons
-                name="heart-outline"
+                name={favourite ? 'heart' : 'heart-outline'}
                 size={22}
-                color={colors.text}
+                color={favourite ? '#B4461F' : colors.text}
               />
             </Pressable>
           </SafeAreaView>
@@ -105,16 +133,19 @@ export function FoodDetailsScreen() {
         <View style={styles.body}>
           <View style={styles.titleRow}>
             <Text style={styles.title}>{name}</Text>
-            <Text style={styles.price}>{price}</Text>
+
           </View>
 
+          {line ? <IngredientLine line={line} style={styles.ingredients} /> : <Text style={styles.dishSubtitle}>{dish?.category ?? 'SIGNATURE DISH'} · PREPARED YOUR WAY</Text>}
+          <Text style={styles.price}>${unitPrice.toFixed(2)}</Text>
           <View style={styles.meta}>
-            <View style={styles.metaItem}>
-              <Ionicons name="star" size={15} color={colors.primary} />
-              <Text style={styles.metaText}>4.8</Text>
-            </View>
-
-            <View style={styles.dot} />
+            {rating ? <>
+              <View style={styles.metaItem}>
+                <Ionicons name="star" size={15} color={colors.primary} />
+                <Text style={styles.metaText}>{rating.average.toFixed(1)} ({rating.count})</Text>
+              </View>
+              <View style={styles.dot} />
+            </> : null}
 
             <View style={styles.metaItem}>
               <Ionicons
@@ -122,13 +153,16 @@ export function FoodDetailsScreen() {
                 size={16}
                 color={colors.textSecondary}
               />
-              <Text style={styles.metaText}>20â€“30 min</Text>
+              <Text style={styles.metaText}>{dish?.time ?? '20–30 min'}</Text>
             </View>
 
             <View style={styles.dot} />
 
             <Text style={styles.delivery}>Delivery</Text>
           </View>
+
+          {!line && <Text style={styles.description}>{dish?.description ?? 'A Signatures favourite, prepared your way.'}</Text>}
+
 
           <View style={styles.divider} />
 
@@ -160,15 +194,9 @@ export function FoodDetailsScreen() {
             })}
           </View>
 
-          <Text style={styles.sectionTitle}>Description</Text>
+          <CustomiseMeal remove={options.remove} add={options.add} removed={removed} added={added} onRemoved={setRemoved} onAdded={setAdded} />
 
-          <Text style={styles.description}>
-            Tender, flavourful and prepared fresh when you order. A Signatures
-            favourite made with quality ingredients and served just the way you
-            like it.
-          </Text>
-
-          <Text style={styles.sectionTitle}>Add extras</Text>
+          <Text style={styles.sectionTitle}>On the side</Text>
 
           {extras.map((extra) => {
             const selected = selectedExtras.includes(extra.id);
@@ -189,7 +217,7 @@ export function FoodDetailsScreen() {
               >
                 <View style={styles.extraLeft}>
                   <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
-                    {selected && <Ionicons name="checkmark" size={15} color="#FFFFFF" />}
+                    {selected && <Ionicons name="checkmark" size={15} color={colors.surface} />}
                   </View>
                   <Text style={styles.extraName}>{extra.name}</Text>
                 </View>
@@ -199,11 +227,18 @@ export function FoodDetailsScreen() {
             );
           })}
 
-          <View style={styles.quantitySection}>
-            <Text style={styles.sectionTitleNoMargin}>Quantity</Text>
 
+        </View>
+
+        <View style={styles.bottomSpace} />
+      </ScrollView>
+
+      <SafeAreaView style={styles.checkoutArea} edges={['bottom']}>
+      <View style={styles.orderBar}>
             <View style={styles.quantityControl}>
               <Pressable
+                accessibilityLabel="Decrease quantity"
+                disabled={quantity === 1}
                 style={styles.quantityButton}
                 onPress={() => setQuantity((value) => Math.max(1, value - 1))}
               >
@@ -213,33 +248,22 @@ export function FoodDetailsScreen() {
               <Text style={styles.quantity}>{quantity}</Text>
 
               <Pressable
+                accessibilityLabel="Increase quantity"
                 style={styles.quantityButton}
                 onPress={() => setQuantity((value) => value + 1)}
               >
                 <Ionicons name="add" size={19} color={colors.text} />
               </Pressable>
             </View>
-          </View>
-        </View>
 
-        <View style={styles.bottomSpace} />
-      </ScrollView>
-
-      <SafeAreaView style={styles.checkoutArea} edges={['bottom']}>
         <Pressable
           style={styles.cartButton}
           onPress={handleAddToCart}
         >
-          <View>
-            <Text style={styles.cartSmall}>ADD TO CART</Text>
-            <Text style={styles.cartPrice}>${totalPrice.toFixed(2)}</Text>
-          </View>
-
-          <View style={styles.cartAction}>
-            <Text style={styles.cartActionText}>Add</Text>
-            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-          </View>
+<Text style={styles.cartActionText}>Add to cart</Text>
+          <Text style={styles.cartPrice}>${totalPrice.toFixed(2)}</Text>
         </Pressable>
+      </View>
       </SafeAreaView>
     </View>
   );
@@ -256,9 +280,7 @@ const styles = StyleSheet.create({
   },
 
   hero: {
-    height: 330,
-    position: 'relative',
-    backgroundColor: colors.surfaceSecondary,
+    height: 310, position: 'relative', backgroundColor: colors.surfaceSecondary, borderBottomLeftRadius: 145, borderBottomRightRadius: 145, overflow: 'hidden',
   },
 
   heroImage: {
@@ -285,7 +307,7 @@ const styles = StyleSheet.create({
   },
 
   body: {
-    padding: spacing.xl,
+    padding: 22,
   },
 
   titleRow: {
@@ -296,17 +318,11 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    flex: 1,
-    fontSize: 25,
-    lineHeight: 31,
-    fontWeight: '800',
-    color: colors.text,
+    fontFamily: fonts.heading, flex: 1, fontSize: 32, lineHeight: 38, color: colors.text,
   },
 
   price: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colors.primary,
+    fontFamily: fonts.semibold, fontSize: 24, color: colors.text, marginTop: 12,
   },
 
   meta: {
@@ -324,14 +340,16 @@ const styles = StyleSheet.create({
   },
 
   metaText: {
+    fontFamily: fonts.bold,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.textSecondary,
   },
 
   delivery: {
+    fontFamily: fonts.bold,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.primary,
   },
 
@@ -339,7 +357,7 @@ const styles = StyleSheet.create({
     width: 3,
     height: 3,
     borderRadius: 2,
-    backgroundColor: '#B7B7BB',
+    backgroundColor: colors.border,
   },
 
   divider: {
@@ -349,16 +367,13 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: colors.text,
-    marginTop: 26,
-    marginBottom: 13,
+    fontFamily: fonts.heading, fontSize: 21, color: colors.text, marginTop: 22, marginBottom: 13,
   },
 
   sectionTitleNoMargin: {
+    fontFamily: fonts.heavy,
     fontSize: 17,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
@@ -379,24 +394,23 @@ const styles = StyleSheet.create({
   },
 
   sizeButtonSelected: {
-    backgroundColor: colors.black,
-    borderColor: colors.black,
+    backgroundColor: colors.cta,
+    borderColor: colors.ctaBorder,
   },
 
   sizeText: {
+    fontFamily: fonts.bold,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.text,
   },
 
   sizeTextSelected: {
-    color: '#FFFFFF',
+    color: colors.onDark,
   },
 
   description: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: colors.textSecondary,
+    fontFamily: fonts.body, fontSize: 14, lineHeight: 22, color: colors.textSecondary, marginTop: 16,
   },
 
   extraRow: {
@@ -433,14 +447,16 @@ const styles = StyleSheet.create({
   },
 
   extraName: {
+    fontFamily: fonts.semibold,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '400',
     color: colors.text,
   },
 
   extraPrice: {
+    fontFamily: fonts.bold,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.textSecondary,
   },
 
@@ -452,27 +468,19 @@ const styles = StyleSheet.create({
   },
 
   quantityControl: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.surface, borderRadius: 28, padding: 3,
   },
 
   quantityButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 40, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
   },
 
   quantity: {
+    fontFamily: fonts.heavy,
     minWidth: 22,
     textAlign: 'center',
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
@@ -481,37 +489,23 @@ const styles = StyleSheet.create({
   },
 
   checkoutArea: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    backgroundColor: 'rgba(247,247,248,0.96)',
+    position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 12, backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: colors.border,
   },
 
   cartButton: {
-    minHeight: 68,
-    backgroundColor: colors.black,
-    borderRadius: radius.xl,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flex: 1, minHeight: 56, backgroundColor: colors.cta, borderWidth: 1, borderColor: colors.ctaBorder, borderRadius: 28, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6,
   },
 
   cartSmall: {
-    color: '#A8A8AD',
+    fontFamily: fonts.heavy,
+    color: colors.gold,
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: '400',
     letterSpacing: 1,
   },
 
   cartPrice: {
-    marginTop: 2,
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '800',
+    fontFamily: fonts.heavy, color: colors.gold, fontSize: 17,
   },
 
   cartAction: {
@@ -521,10 +515,12 @@ const styles = StyleSheet.create({
   },
 
   cartActionText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '800',
+    fontFamily: fonts.bold, color: colors.onDark, fontSize: 15, letterSpacing: 0.3,
   },
+  ingredients: { marginTop: 9, fontSize: 11, lineHeight: 15 },
+  dishSubtitle: { fontFamily: fonts.medium, fontSize: 9, letterSpacing: 1.8, color: colors.textSecondary, marginTop: 8, textTransform: 'uppercase' },
+  orderBar: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingBottom: 10 },
+
 });
 
 

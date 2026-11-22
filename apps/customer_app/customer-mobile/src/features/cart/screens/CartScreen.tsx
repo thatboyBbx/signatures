@@ -1,9 +1,11 @@
+import { useCheckout } from '../../../context/CheckoutContext';
+import { branchName } from '../../../services/venuesApi';
+import { ParamountPhoto as Image } from '../../../components/ParamountPressable';
+import { ParamountPressable as Pressable } from '../../../components/ParamountPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
-  Image,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,8 +14,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCart } from '../../../context/CartContext';
+import { mockFeatures } from '../../../services/mockFeatures';
+import { PromoRow } from '../components/PromoRow';
+import { optionSummary } from '../../food/components/CustomiseMeal';
 import type { RootStackParamList } from '../../../navigation/AppNavigator';
-import { colors, radius, spacing } from '../../../theme/theme';
+import { colors, radius, spacing, fonts } from '../../../theme/theme';
 
 type Navigation = NativeStackNavigationProp<RootStackParamList>;
 
@@ -28,10 +33,12 @@ export function CartScreen() {
     increaseQuantity,
     decreaseQuantity,
     removeItem,
+    discount,
   } = useCart();
 
-  const deliveryFee = items.length > 0 ? DELIVERY_FEE : 0;
-  const total = subtotal + deliveryFee;
+  const { venue } = useCheckout();
+  const deliveryFee = items.length > 0 ? Number(venue?.delivery_fee ?? DELIVERY_FEE) : 0;
+  const total = subtotal - discount + deliveryFee;
 
   return (
     <View style={styles.container}>
@@ -101,7 +108,7 @@ export function CartScreen() {
                   </Text>
 
                   <Text style={styles.restaurantName}>
-                    Signatures Restaurant
+                    {venue ? branchName(venue.name) : 'Your selected venue'}
                   </Text>
                 </View>
               </View>
@@ -142,12 +149,7 @@ export function CartScreen() {
                     </View>
 
                     <Text style={styles.itemOptions}>
-                      {item.size}
-                      {item.extras.length > 0
-                        ? ` • ${item.extras
-                            .map((extra) => extra.name)
-                            .join(', ')}`
-                        : ''}
+                      {optionSummary(item.size, item.extras, item.removed)}
                     </Text>
 
                     <View style={styles.itemBottom}>
@@ -208,6 +210,8 @@ export function CartScreen() {
                 </Text>
               </Pressable>
 
+              {mockFeatures.promoCodes && <PromoRow />}
+
               <Text style={styles.sectionTitle}>
                 Order summary
               </Text>
@@ -222,6 +226,11 @@ export function CartScreen() {
                     ${subtotal.toFixed(2)}
                   </Text>
                 </View>
+
+                {discount > 0 && <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Promo</Text>
+                  <Text style={[styles.summaryValue, { color: colors.success }]}>−${discount.toFixed(2)}</Text>
+                </View>}
 
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>
@@ -277,7 +286,7 @@ export function CartScreen() {
                   <Ionicons
                     name="arrow-forward"
                     size={19}
-                    color="#FFFFFF"
+                    color={colors.surface}
                   />
                 </View>
               </Pressable>
@@ -300,7 +309,7 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    height: 64,
+    minHeight: 64,
     paddingHorizontal: spacing.xl,
     flexDirection: 'row',
     alignItems: 'center',
@@ -319,8 +328,9 @@ const styles = StyleSheet.create({
   },
 
   headerTitle: {
+    fontFamily: fonts.heading,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
@@ -347,7 +357,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#FFF0EA',
+    backgroundColor: colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -358,24 +368,27 @@ const styles = StyleSheet.create({
   },
 
   restaurantLabel: {
+    fontFamily: fonts.heavy,
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: '400',
     letterSpacing: 1,
     color: colors.primary,
   },
 
   restaurantName: {
+    fontFamily: fonts.heading,
     marginTop: 3,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
   sectionTitle: {
+    fontFamily: fonts.heading,
     marginTop: 28,
     marginBottom: 13,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
@@ -408,13 +421,15 @@ const styles = StyleSheet.create({
   },
 
   itemName: {
+    fontFamily: fonts.heavy,
     flex: 1,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
   itemOptions: {
+    fontFamily: fonts.body,
     marginTop: 5,
     fontSize: 11,
     lineHeight: 16,
@@ -429,8 +444,9 @@ const styles = StyleSheet.create({
   },
 
   itemPrice: {
+    fontFamily: fonts.heavy,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.primary,
   },
 
@@ -441,8 +457,8 @@ const styles = StyleSheet.create({
   },
 
   quantityButton: {
-    width: 34,
-    height: 34,
+    width: 44,
+    height: 44,
     borderRadius: 17,
     borderWidth: 1,
     borderColor: colors.border,
@@ -452,10 +468,11 @@ const styles = StyleSheet.create({
   },
 
   quantity: {
+    fontFamily: fonts.heavy,
     minWidth: 18,
     textAlign: 'center',
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
@@ -472,8 +489,9 @@ const styles = StyleSheet.create({
   },
 
   addMoreText: {
+    fontFamily: fonts.heavy,
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.primary,
   },
 
@@ -493,13 +511,15 @@ const styles = StyleSheet.create({
   },
 
   summaryLabel: {
+    fontFamily: fonts.body,
     fontSize: 13,
     color: colors.textSecondary,
   },
 
   summaryValue: {
+    fontFamily: fonts.bold,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.text,
   },
 
@@ -510,14 +530,16 @@ const styles = StyleSheet.create({
   },
 
   totalLabel: {
+    fontFamily: fonts.heavy,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
   totalValue: {
+    fontFamily: fonts.heavy,
     fontSize: 19,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.primary,
   },
 
@@ -532,31 +554,33 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: spacing.xl,
     paddingTop: 12,
-    backgroundColor: 'rgba(247,247,248,0.97)',
+    backgroundColor: colors.background,
   },
 
   checkoutButton: {
     minHeight: 68,
     paddingHorizontal: 20,
     borderRadius: radius.xl,
-    backgroundColor: colors.black,
+    backgroundColor: colors.cta, borderWidth: 1, borderColor: colors.ctaBorder,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
 
   checkoutLabel: {
-    color: '#A8A8AD',
+    fontFamily: fonts.heavy,
+    color: colors.gold,
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: '400',
     letterSpacing: 1,
   },
 
   checkoutPrice: {
+    fontFamily: fonts.heavy,
     marginTop: 2,
-    color: '#FFFFFF',
+    color: colors.surface,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '400',
   },
 
   checkoutAction: {
@@ -566,9 +590,10 @@ const styles = StyleSheet.create({
   },
 
   checkoutText: {
-    color: '#FFFFFF',
+    fontFamily: fonts.heavy,
+    color: colors.surface,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '400',
   },
 
   empty: {
@@ -583,19 +608,21 @@ const styles = StyleSheet.create({
     width: 70,
     height: 70,
     borderRadius: 35,
-    backgroundColor: '#FFF0EA',
+    backgroundColor: colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   emptyTitle: {
+    fontFamily: fonts.heading,
     marginTop: 20,
     fontSize: 21,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
   emptyDescription: {
+    fontFamily: fonts.body,
     marginTop: 8,
     maxWidth: 290,
     textAlign: 'center',
@@ -609,14 +636,15 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: 25,
     borderRadius: radius.pill,
-    backgroundColor: colors.black,
+    backgroundColor: colors.cta, borderWidth: 1, borderColor: colors.ctaBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   browseButtonText: {
-    color: '#FFFFFF',
+    fontFamily: fonts.heavy,
+    color: colors.surface,
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '400',
   },
 });

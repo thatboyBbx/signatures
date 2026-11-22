@@ -1,7 +1,12 @@
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../../navigation/AppNavigator';
+import { ParamountPressable as Pressable } from '../../../components/ParamountPressable';
 import { Ionicons } from '@expo/vector-icons';
 import {
   Alert,
-  Pressable,
+  Platform,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -9,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../../context/AuthContext';
-import { colors, radius } from '../../../theme/theme';
+import { colors, radius, fonts } from '../../../theme/theme';
 
 const options = [
   { label: 'Personal details', icon: 'person-outline' },
@@ -22,8 +27,10 @@ const options = [
 
 export function ProfileScreen() {
   const { customer, signOut } = useAuth();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   const confirmSignOut = () => {
+    if (Platform.OS === 'web') { navigation.navigate('Settings'); return; }
     Alert.alert(
       'Log out?',
       'You will need to log in again to access your orders.',
@@ -49,12 +56,13 @@ export function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
       <Text style={styles.eyebrow}>YOUR ACCOUNT</Text>
       <Text style={styles.title}>Profile</Text>
 
       <View style={styles.user}>
         <View style={styles.avatar}>
-          <Ionicons name="person" size={27} color="#FFFFFF" />
+          <Ionicons name="person" size={27} color={colors.surface} />
         </View>
 
         <View style={styles.userDetails}>
@@ -74,6 +82,7 @@ export function ProfileScreen() {
         {options.map((option, index) => (
           <Pressable
             key={option.label}
+            onPress={() => navigation.navigate(({ 'Personal details': 'PersonalDetails', 'Saved addresses': 'Address', 'Payment methods': 'Payment', Favourites: 'Favourites', Notifications: 'Notifications', Settings: 'Settings' } as const)[option.label])}
             style={[
               styles.row,
               index !== options.length - 1 && styles.rowBorder,
@@ -107,11 +116,12 @@ export function ProfileScreen() {
         <Ionicons
           name="log-out-outline"
           size={20}
-          color="#D92D20"
+          color={colors.error}
         />
 
         <Text style={styles.logoutText}>Log out</Text>
       </Pressable>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -124,15 +134,17 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
   eyebrow: {
+    fontFamily: fonts.heavy,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '400',
     letterSpacing: 1.4,
     color: colors.primary,
   },
   title: {
+    fontFamily: fonts.heading,
     marginTop: 7,
     fontSize: 30,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
   user: {
@@ -153,16 +165,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   name: {
+    fontFamily: fonts.heavy,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
   subtitle: {
+    fontFamily: fonts.body,
     marginTop: 3,
     fontSize: 13,
     color: colors.textSecondary,
   },
   phone: {
+    fontFamily: fonts.body,
     marginTop: 2,
     fontSize: 11,
     color: colors.textSecondary,
@@ -200,8 +215,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rowText: {
+    fontFamily: fonts.bold,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.text,
   },
   logoutButton: {
@@ -210,15 +226,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#F3D4D1',
+    borderColor: colors.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
   logoutText: {
-    color: '#D92D20',
+    fontFamily: fonts.heavy,
+    color: colors.error,
     fontSize: 14,
-    fontWeight: '900',
+    fontWeight: '400',
   },
 });

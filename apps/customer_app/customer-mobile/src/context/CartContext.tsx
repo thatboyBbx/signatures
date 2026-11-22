@@ -1,12 +1,15 @@
+import { useAuth } from './AuthContext';
 import {
   createContext,
   ReactNode,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from 'react';
 
 import type { CartItem } from '../types/cart';
+import { promoDiscount, type Promo } from '../services/mockApi';
 
 type CartContextValue = {
   items: CartItem[];
@@ -21,12 +24,21 @@ type CartContextValue = {
   decreaseQuantity: (id: string) => void;
 
   clearCart: () => void;
+
+  /** Promo code (mock until the API validates codes). */
+  promo: Promo | null;
+  discount: number;
+  setPromo: (promo: Promo | null) => void;
 };
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
+  const [promo, setPromo] = useState<Promo | null>(null);
+  const { customer } = useAuth();
+  useEffect(() => { setItems([]); setPromo(null); }, [customer?.id]);
+  useEffect(() => { if (!items.length) setPromo(null); }, [items.length]);
 
   const addItem = (item: CartItem) => {
     setItems((current) => {
@@ -94,6 +106,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const clearCart = () => {
     setItems([]);
+    setPromo(null);
   };
 
   const itemCount = useMemo(
@@ -114,6 +127,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
     [items],
   );
 
+  const discount = promoDiscount(promo, subtotal);
+
   return (
     <CartContext.Provider
       value={{
@@ -125,6 +140,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         increaseQuantity,
         decreaseQuantity,
         clearCart,
+        promo,
+        discount,
+        setPromo,
       }}
     >
       {children}

@@ -1,4 +1,7 @@
-import { createContext, ReactNode, useContext, useState } from 'react';
+import { useAuth } from './AuthContext';
+import { useCart } from './CartContext';
+import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
+import type { Venue } from '../services/venuesApi';
 
 export type DeliveryAddress = {
   id: string;
@@ -14,6 +17,8 @@ export type PaymentMethod = {
 };
 
 type CheckoutContextValue = {
+  venue: Venue | null;
+  setVenue: (venue: Venue) => void;
   address: DeliveryAddress | null;
   paymentMethod: PaymentMethod | null;
 
@@ -30,12 +35,17 @@ export function CheckoutProvider({
 }: {
   children: ReactNode;
 }) {
+  const { clearCart } = useCart();
+  const { customer } = useAuth();
+  const [venue, updateVenue] = useState<Venue | null>(null);
   const [address, setAddress] =
     useState<DeliveryAddress | null>(null);
 
   const [paymentMethod, setPaymentMethod] =
     useState<PaymentMethod | null>(null);
 
+  const setVenue = (next: Venue) => { if (venue?.code !== next.code) clearCart(); updateVenue(next); };
+  useEffect(() => { updateVenue(null); setAddress(null); setPaymentMethod(null); }, [customer?.id]);
   const resetCheckout = () => {
     setAddress(null);
     setPaymentMethod(null);
@@ -44,6 +54,8 @@ export function CheckoutProvider({
   return (
     <CheckoutContext.Provider
       value={{
+        venue,
+        setVenue,
         address,
         paymentMethod,
         setAddress,

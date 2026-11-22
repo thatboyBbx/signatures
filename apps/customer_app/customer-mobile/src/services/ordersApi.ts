@@ -56,7 +56,7 @@ export type ApiTrackedOrder = {
   created_at: string;
   branches: ApiBranch | ApiBranch[];
   order_items: ApiOrderItem[];
-  deliveries: ApiDelivery[];
+  deliveries: ApiDelivery[] | ApiDelivery | null;
 };
 
 export type CreateOrderInput = {
@@ -66,6 +66,8 @@ export type CreateOrderInput = {
   paymentMethod?: string;
   notes?: string;
   items: {
+    menuItemId?: string;
+    variantId?: string;
     itemName: string;
     variantName?: string;
     quantity: number;
@@ -93,13 +95,18 @@ async function readResponse<T>(
   return data.data;
 }
 
+const orderKeys = new Map<string, string>();
+export function completeOrderAttempt(input: CreateOrderInput) { orderKeys.delete(JSON.stringify(input)); }
 export async function createOrder(
   input: CreateOrderInput,
 ) {
+  const fingerprint = JSON.stringify(input);
+  if (!orderKeys.has(fingerprint)) orderKeys.set(fingerprint, `order-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const response = await authenticatedFetch(`${API_URL}/orders`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Idempotency-Key': orderKeys.get(fingerprint)!,
     },
     body: JSON.stringify(input),
   });
@@ -181,7 +188,7 @@ export function mapApiOrder(
 ): Order {
   const branch = asOne(apiOrder.branches);
   const delivery = getLatestDelivery(
-    apiOrder.deliveries ?? [],
+    Array.isArray(apiOrder.deliveries) ? apiOrder.deliveries : apiOrder.deliveries ? [apiOrder.deliveries] : [],
   );
   const driver = asOne(delivery?.drivers);
 
@@ -206,6 +213,7 @@ export function mapApiOrder(
 
   return {
     id: apiOrder.order_number,
+    orderType: apiOrder.order_type,
     restaurantName: branch?.name ?? 'Signatures Restaurant',
     items,
     itemCount: items.reduce(
@@ -225,10 +233,10 @@ export function mapApiOrder(
     },
     paymentMethod: {
       id: paymentId,
-      label: isCash ? 'Cash' : 'Paid online',
+      label: isCash ? 'Cash' : 'Payment method',
       detail: isCash
-        ? 'Pay when your order arrives'
-        : 'Payment recorded with your order',
+        ? (apiOrder.payment_status === 'collected' ? 'Cash collected' : 'Pay on delivery or collection')
+        : 'Check payment status with the branch',
       icon: isCash ? 'cash-outline' : 'card-outline',
     },
     status: mapStatus(apiOrder.status, delivery),

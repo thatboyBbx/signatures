@@ -1,430 +1,107 @@
+import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import {
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { ParamountPressable as Pressable, ParamountPhoto as Image } from '../../../components/ParamountPressable';
+import { ParamountTray } from '../../../components/ParamountTray';
+import { useMenu } from '../../../context/MenuContext';
+import { DishSkeletons, MenuState, useMenuLoading } from '../../../components/MenuState';
+import { MealDealCard } from '../../home/components/HomeExtras';
+import { colors, fonts } from '../../../theme/theme';
+import { AtmosphereVideo } from '../../../components/AtmosphereVideo';
+import { ParamountDock, dockRoutes } from '../../../components/ParamountTabBar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AtmosphereProvider } from '../../../context/AtmosphereContext';
+import { IngredientLine, TrayBar, TRAY_BAR_SPACE } from '../../../components/TrayBar';
+import { ingredientLine } from '../../../sample-data/dishDetails';
+import { useRatings } from '../../../context/RatingsContext';
+import { useCart } from '../../../context/CartContext';
 import type { RootStackParamList } from '../../../navigation/AppNavigator';
-import { colors, radius, spacing } from '../../../theme/theme';
-
-type Navigation = NativeStackNavigationProp<RootStackParamList>;
-
-const menu = [
-  {
-    id: '1',
-    name: 'Grilled Chicken',
-    description: 'Tender grilled chicken with seasonal vegetables.',
-    price: '$8.50',
-    rating: '4.8',
-    image:
-      'https://images.unsplash.com/photo-1532550907401-a500c9a57435?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: '2',
-    name: 'Classic Burger',
-    description: 'Beef patty, cheese, lettuce and our signature sauce.',
-    price: '$6.50',
-    rating: '4.7',
-    image:
-      'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: '3',
-    name: 'Pepperoni Pizza',
-    description: 'Mozzarella, pepperoni and rich tomato sauce.',
-    price: '$10.00',
-    rating: '4.9',
-    image:
-      'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?auto=format&fit=crop&w=900&q=80',
-  },
-];
 
 export function RestaurantScreen() {
-  const navigation = useNavigation<Navigation>();
-
-  return (
-    <View style={styles.container}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
-      >
-        <View style={styles.hero}>
-          <Image
-            source={{
-              uri: 'https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=1200&q=80',
-            }}
-            style={styles.heroImage}
-          />
-
-          <SafeAreaView style={styles.heroControls} edges={['top']}>
-            <Pressable
-              style={styles.circleButton}
-              onPress={() => navigation.goBack()}
-            >
-              <Ionicons name="arrow-back" size={21} color={colors.text} />
-            </Pressable>
-
-            <View style={styles.heroRight}>
-              <Pressable style={styles.circleButton}>
-                <Ionicons
-                  name="heart-outline"
-                  size={21}
-                  color={colors.text}
-                />
-              </Pressable>
-
-              <Pressable
-                style={styles.circleButton}
-                onPress={() => navigation.navigate('Cart')}
-              >
-                <Ionicons
-                  name="bag-outline"
-                  size={21}
-                  color={colors.text}
-                />
-              </Pressable>
-            </View>
-          </SafeAreaView>
-        </View>
-
-        <View style={styles.restaurantInfo}>
-          <View style={styles.titleRow}>
-            <View style={styles.titleContent}>
-              <Text style={styles.title}>Signatures Restaurant</Text>
-              <Text style={styles.category}>Grill • Burgers • Pizza</Text>
-            </View>
-
-            <View style={styles.rating}>
-              <Ionicons name="star" size={15} color={colors.primary} />
-              <Text style={styles.ratingText}>4.8</Text>
-            </View>
-          </View>
-
-          <View style={styles.deliveryInfo}>
-            <View style={styles.infoItem}>
-              <Ionicons
-                name="time-outline"
-                size={17}
-                color={colors.textSecondary}
-              />
-              <Text style={styles.infoText}>20–30 min</Text>
-            </View>
-
-            <View style={styles.infoItem}>
-              <Ionicons
-                name="bicycle-outline"
-                size={18}
-                color={colors.textSecondary}
-              />
-              <Text style={styles.infoText}>Delivery</Text>
-            </View>
-          </View>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categories}
-        >
-          {['Popular', 'Chicken', 'Burgers', 'Pizza', 'Drinks'].map(
-            (category, index) => (
-              <Pressable
-                key={category}
-                style={[
-                  styles.categoryChip,
-                  index === 0 && styles.categoryChipActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.categoryText,
-                    index === 0 && styles.categoryTextActive,
-                  ]}
-                >
-                  {category}
-                </Text>
-              </Pressable>
-            ),
-          )}
+  const { menu: liveMenu, preview } = useMenu();
+  const categories = ['All', ...new Set(liveMenu.map(item => item.category))];
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [category, setCategory] = useState('All');
+  const { width } = useWindowDimensions();
+  const columns = width >= 700 ? 3 : 2;
+  const titleSize = Math.min(64, Math.max(44, Math.min(width, 820) * 0.14));
+  const insets = useSafeAreaInsets();
+  const { dishRating } = useRatings();
+  const { itemCount } = useCart();
+  const menuLoading = useMenuLoading();
+  const menu = liveMenu.filter(item => category === 'All' || item.category === category);
+  return <View style={styles.screen}>
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, itemCount > 0 && { paddingBottom: 130 + TRAY_BAR_SPACE }]}>
+      <View style={styles.hero}>
+        {/* Real grill footage, continuing from Home's "Explore the menu". Flat scrim, no gradient. */}
+        <AtmosphereProvider><AtmosphereVideo variant="grill" /></AtmosphereProvider>
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(14,11,8,0.5)' }]} />
+        <SafeAreaView edges={['top']} style={styles.controls}>
+          <Pressable accessibilityLabel="Back" style={styles.circle} onPress={() => navigation.goBack()}><Ionicons name="arrow-back" size={22} color={colors.onDark} /></Pressable>
+          <ParamountTray onPress={() => navigation.navigate('Cart')} />
+        </SafeAreaView>
+        <View style={styles.heroCopy}><Text accessibilityRole="header" style={[styles.title, { fontSize: titleSize, lineHeight: Math.round(titleSize * 1.06) }]}>Our menu.</Text><Text style={styles.titleItalic}>Straight from the fire.</Text></View>
+      </View>
+      <View style={styles.sheet}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categories}>
+          {categories.map(option => <Pressable key={option} accessibilityRole="button" accessibilityState={{ selected: category === option }} onPress={() => setCategory(option)} style={[styles.chip, category === option && styles.activeChip]}>
+            <Text style={[styles.chipText, category === option && styles.activeText]}>{option}</Text>
+          </Pressable>)}
         </ScrollView>
-
-        <View style={styles.menuSection}>
-          <Text style={styles.sectionTitle}>Popular dishes</Text>
-
-          {menu.map((item) => (
-            <Pressable
-              key={item.id}
-              style={styles.menuCard}
-              onPress={() =>
-                navigation.navigate('FoodDetails', {
-                  name: item.name,
-                  price: item.price,
-                  image: item.image,
-                })
-              }
-            >
-              <View style={styles.menuInfo}>
-                <Text style={styles.menuName}>{item.name}</Text>
-
-                <Text style={styles.menuDescription} numberOfLines={2}>
-                  {item.description}
-                </Text>
-
-                <View style={styles.menuBottom}>
-                  <Text style={styles.menuPrice}>{item.price}</Text>
-
-                  <View style={styles.smallRating}>
-                    <Ionicons name="star" size={13} color={colors.primary} />
-                    <Text style={styles.smallRatingText}>{item.rating}</Text>
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.menuImageWrapper}>
-                <Image source={{ uri: item.image }} style={styles.menuImage} />
-
-                <View style={styles.addButton}>
-                  <Ionicons name="add" size={22} color="#FFFFFF" />
-                </View>
-              </View>
-            </Pressable>
-          ))}
+        <MenuState /><View style={styles.sectionHeading}><Text style={styles.heading}>{category === 'All' ? 'Signature dishes' : category}</Text><Text style={styles.sample}>{menuLoading ? '' : `${preview ? 'Sample menu' : 'Venue menu'} · ${menu.length} dishes`}</Text></View>
+        {(category === 'All' || category === 'Burgers') && <MealDealCard />}
+        <View style={styles.grid}>
+          {menuLoading && <DishSkeletons variant="grid" count={columns * 2} width={columns === 3 ? '31.8%' : '48.2%'} />}
+          {menu.map(item => <Pressable photoMotion key={item.id} accessibilityLabel={`Choose ${item.name}, ${item.price}`} onPress={() => navigation.navigate('FoodDetails', { menuItemId: item.id, name: item.name, price: item.price, image: item.image })}
+            style={[styles.card, { width: columns === 3 ? '31.8%' : '48.2%' }]}>
+            <Image source={{ uri: item.image }} style={styles.photo} />
+            <View style={styles.cardCopy}><Text style={styles.dishName}>{item.name}</Text><IngredientLine dark lines={2} line={ingredientLine(item.name, item.description)} style={{ marginTop: -4 }} /><View style={styles.priceRow}><Text style={styles.price}>{item.price}{(() => { const rating = dishRating(item.name); return rating ? `  ·  ★ ${rating.average.toFixed(1)}` : ''; })()}</Text><View style={styles.add}><Ionicons name="add" size={20} color={colors.text} /></View></View></View>
+          </Pressable>)}
         </View>
-      </ScrollView>
-    </View>
-  );
+        {menu.length === 0 && !menuLoading && <View style={styles.empty}><Ionicons name="restaurant-outline" size={28} color={colors.primary} /><Text style={styles.heading}>More to come</Text><Text style={styles.emptyText}>No dishes in this category yet.</Text><Pressable style={styles.chip} onPress={() => setCategory('All')}><Text style={styles.chipText}>Explore all dishes</Text></Pressable></View>}
+      </View>
+    </ScrollView>
+    <TrayBar bottomInset={insets.bottom} onPress={() => navigation.navigate('Checkout')} />
+    <ParamountDock bottomInset={insets.bottom} onSelect={index => navigation.popTo('MainTabs', { screen: dockRoutes[index] })} />
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-
-  content: {
-    paddingBottom: 40,
-  },
-
-  hero: {
-    height: 250,
-    position: 'relative',
-  },
-
-  heroImage: {
-    width: '100%',
-    height: '100%',
-  },
-
-  heroControls: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    top: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-
-  heroRight: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-
-  circleButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  restaurantInfo: {
-    padding: spacing.xl,
-  },
-
-  titleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 14,
-  },
-
-  titleContent: {
-    flex: 1,
-  },
-
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colors.text,
-  },
-
-  category: {
-    marginTop: 5,
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-
-  rating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 4,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: radius.pill,
-  },
-
-  ratingText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.text,
-  },
-
-  deliveryInfo: {
-    flexDirection: 'row',
-    gap: 20,
-    marginTop: 18,
-  },
-
-  infoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-
-  infoText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-
-  categories: {
-    gap: 8,
-    paddingHorizontal: spacing.xl,
-    paddingBottom: 8,
-  },
-
-  categoryChip: {
-    minHeight: 42,
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-
-  categoryChipActive: {
-    backgroundColor: colors.black,
-    borderColor: colors.black,
-  },
-
-  categoryText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.text,
-  },
-
-  categoryTextActive: {
-    color: '#FFFFFF',
-  },
-
-  menuSection: {
-    paddingHorizontal: spacing.xl,
-    marginTop: 22,
-  },
-
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.text,
-    marginBottom: 14,
-  },
-
-  menuCard: {
-    minHeight: 132,
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 14,
-    padding: 12,
-  },
-
-  menuInfo: {
-    flex: 1,
-    padding: 4,
-    paddingRight: 12,
-  },
-
-  menuName: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.text,
-  },
-
-  menuDescription: {
-    marginTop: 6,
-    fontSize: 12,
-    lineHeight: 18,
-    color: colors.textSecondary,
-  },
-
-  menuBottom: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 12,
-  },
-
-  menuPrice: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.primary,
-  },
-
-  smallRating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-
-  smallRatingText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.text,
-  },
-
-  menuImageWrapper: {
-    width: 112,
-    height: 108,
-    position: 'relative',
-  },
-
-  menuImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: radius.lg,
-  },
-
-  addButton: {
-    position: 'absolute',
-    right: 7,
-    bottom: 7,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  screen: { flex: 1, backgroundColor: colors.background },
+  content: { paddingBottom: 130 },
+  hero: { height: 360, backgroundColor: colors.black, overflow: 'hidden' },
+  controls: { position: 'absolute', left: 20, right: 20, top: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  circle: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(17,12,8,0.45)', borderWidth: 1, borderColor: 'rgba(233,211,174,0.3)', alignItems: 'center', justifyContent: 'center' },
+  titleItalic: { fontFamily: fonts.headingItalic, fontSize: 30, lineHeight: 36, color: colors.gold, marginTop: -4 },
+  heroCopy: { position: 'absolute', left: 24, right: 24, bottom: 52, gap: 2 },
+  eyebrow: { fontFamily: fonts.semibold, fontSize: 9, lineHeight: 16, letterSpacing: 2.2, color: colors.onDark },
+  title: { fontFamily: fonts.heading, fontSize: 46, lineHeight: 52, color: colors.onDark },
+  subtitle: { fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: colors.onDark },
+  sheet: { marginTop: -25, backgroundColor: colors.background, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 16, paddingTop: 15 },
+  categories: { gap: 7, paddingBottom: 8 },
+  chip: { minHeight: 44, paddingHorizontal: 17, justifyContent: 'center', backgroundColor: colors.surface, borderRadius: 23 },
+  activeChip: { backgroundColor: colors.primary },
+  chipText: { fontFamily: fonts.medium, fontSize: 11, color: colors.text },
+  activeText: { color: colors.onDark },
+  sectionHeading: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginVertical: 13 },
+  heading: { fontFamily: fonts.heading, fontSize: 23, color: colors.text },
+  sample: { fontFamily: fonts.body, fontSize: 10, color: colors.textSecondary },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 13 },
+  card: { backgroundColor: colors.black, borderRadius: 16, overflow: 'hidden' },
+  photo: { width: '100%', aspectRatio: 1.04 },
+  cardCopy: { padding: 10, gap: 8 },
+  dishName: { fontFamily: fonts.heading, fontSize: 17, color: colors.onDark },
+  priceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 5 },
+  price: { fontFamily: fonts.medium, fontSize: 13, color: colors.onDark },
+  add: { width: 29, height: 29, borderRadius: 15, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  empty: { minHeight: 210, alignItems: 'center', justifyContent: 'center', gap: 13 },
+  emptyText: { fontFamily: fonts.body, fontSize: 13, color: colors.textSecondary },
+  note: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 22, marginTop: 28, gap: 5 },
+  noteTitle: { fontFamily: fonts.headingItalic, fontSize: 25, color: colors.primary },
+  noteCopy: { fontFamily: fonts.body, fontSize: 12, color: colors.textSecondary },
 });

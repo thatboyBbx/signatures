@@ -1,6 +1,8 @@
-﻿import { Ionicons } from '@expo/vector-icons';
+import { ParamountPressable as Pressable } from '../../../components/ParamountPressable';
+import { Ionicons } from '@expo/vector-icons';
 import {
   useNavigation,
+  useIsFocused,
   useRoute,
 } from '@react-navigation/native';
 import type {
@@ -12,7 +14,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
-  Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,11 +22,13 @@ import {
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { TrackingExperience } from '../components/TrackingExperience';
+import { Skeleton } from '../../../components/Skeleton';
 
 import { useOrders } from '../../../context/OrderContext';
 import type { RootStackParamList } from '../../../navigation/AppNavigator';
 import type { OrderStatus } from '../../../types/order';
-import { colors, radius, spacing } from '../../../theme/theme';
+import { colors, radius, spacing, fonts } from '../../../theme/theme';
 
 type Props = NativeStackScreenProps<
   RootStackParamList,
@@ -160,19 +164,41 @@ function getHeroMessage(status: OrderStatus) {
 export function OrderTrackingScreen() {
   const navigation = useNavigation<Navigation>();
   const route = useRoute<Props['route']>();
+  const focused = useIsFocused();
 
   const {
     getOrder,
     refreshOrder,
     loading,
+    addOrder,
   } = useOrders();
+  const preview = process.env.EXPO_PUBLIC_UI_PREVIEW === '1';
   const [refreshError, setRefreshError] =
     useState<string | null>(null);
 
   const order = getOrder(route.params.orderId);
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+
+  const manualRefresh = async () => {
+    if (refreshing) return;
+    if (preview) { setUpdatedAt(new Date()); return; }
+    setRefreshing(true);
+    try {
+      await refreshOrder(route.params.orderId);
+      setRefreshError(null);
+      setUpdatedAt(new Date());
+    } catch {
+      setRefreshError('Could not refresh your order. Please try again.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
+    if (preview) { setUpdatedAt(new Date()); return; }
+    if (!focused) return;
 
     const syncOrder = async () => {
       try {
@@ -180,6 +206,7 @@ export function OrderTrackingScreen() {
 
         if (!cancelled) {
           setRefreshError(null);
+          setUpdatedAt(new Date());
         }
       } catch (error) {
         console.error(
@@ -198,8 +225,8 @@ export function OrderTrackingScreen() {
     void syncOrder();
 
     const interval = setInterval(
-      () => void syncOrder(),
-      5000,
+      () => { if (AppState.currentState === 'active') void syncOrder(); },
+      15000,
     );
 
     const appStateSubscription =
@@ -217,7 +244,24 @@ export function OrderTrackingScreen() {
       clearInterval(interval);
       appStateSubscription.remove();
     };
-  }, [route.params.orderId]);
+  }, [route.params.orderId, focused]);
+
+  if (!order && loading) {
+    // Dark skeleton so the cinematic screen never flashes a white spinner while loading.
+    return (
+      <View style={{ flex: 1, backgroundColor: '#0F0B08', padding: 20, paddingTop: 80, gap: 16 }}>
+        <View style={{ width: '100%', maxWidth: 620, alignSelf: 'center', gap: 16 }}>
+          <Skeleton tone="dark" width={150} height={28} radius={14} />
+          <Skeleton tone="dark" width="70%" height={40} radius={10} />
+          <Skeleton tone="dark" width="55%" height={16} />
+          <View style={{ height: 120 }} />
+          <Skeleton tone="dark" height={92} radius={24} />
+          <Skeleton tone="dark" height={190} radius={24} />
+          <Skeleton tone="dark" height={84} radius={24} />
+        </View>
+      </View>
+    );
+  }
 
   if (!order) {
     return (
@@ -225,6 +269,7 @@ export function OrderTrackingScreen() {
         <View style={styles.header}>
           <Pressable
             style={styles.backButton}
+            accessibilityLabel="Back"
             onPress={() => navigation.goBack()}
           >
             <Ionicons
@@ -267,16 +312,15 @@ export function OrderTrackingScreen() {
 
               <Pressable
                 style={styles.retryButton}
-                onPress={() =>
-                  void refreshOrder(
-                    route.params.orderId,
-                  )
-                }
+                accessibilityRole="button"
+                disabled={refreshing}
+                onPress={() => void manualRefresh()}
               >
                 <Text style={styles.retryButtonText}>
-                  Try again
+                  {refreshing ? 'Refreshing…' : 'Try again'}
                 </Text>
               </Pressable>
+              {refreshError && <Text accessibilityRole="alert" style={styles.syncWarningText}>{refreshError}</Text>}
             </>
           )}
         </View>
@@ -284,409 +328,8 @@ export function OrderTrackingScreen() {
     );
   }
 
-  const currentIndex =
-    order.status === 'cancelled'
-      ? -1
-      : statusOrder.indexOf(
-          order.status as TimelineStatus,
-        );
-
-  return (
-    <View style={styles.container}>
-      <SafeAreaView
-        style={styles.safeArea}
-        edges={['top']}
-      >
-        <View style={styles.header}>
-          <Pressable
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons
-              name="arrow-back"
-              size={21}
-              color={colors.text}
-            />
-          </Pressable>
-
-          <Text style={styles.headerTitle}>
-            Track order
-          </Text>
-
-          <Pressable style={styles.helpButton}>
-            <Ionicons
-              name="help-circle-outline"
-              size={22}
-              color={colors.text}
-            />
-          </Pressable>
-        </View>
-
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.content}
-        >
-          <View style={styles.heroCard}>
-            <View style={styles.heroTop}>
-              <View>
-                <Text style={styles.heroLabel}>
-                  ESTIMATED DELIVERY
-                </Text>
-
-                <Text style={styles.heroTime}>
-                  {order.status === 'delivered'
-                    ? 'Delivered'
-                    : order.estimatedMinutes
-                      ? `${order.estimatedMinutes} min`
-                      : '20-30 min'}
-                </Text>
-              </View>
-
-              <View style={styles.deliveryIcon}>
-                <Ionicons
-                  name="bicycle"
-                  size={25}
-                  color="#FFFFFF"
-                />
-              </View>
-            </View>
-
-            <Text style={styles.heroMessage}>
-              {getHeroMessage(order.status)}
-            </Text>
-
-            <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width:
-                      currentIndex < 0
-                        ? '0%'
-                        : `${
-                            ((currentIndex + 1) /
-                              statusOrder.length) *
-                            100
-                          }%`,
-                  },
-                ]}
-              />
-            </View>
-
-            <Text style={styles.orderId}>
-              {order.id}
-            </Text>
-          </View>
-
-          {refreshError && (
-            <View style={styles.syncWarning}>
-              <Ionicons
-                name="cloud-offline-outline"
-                size={18}
-                color={colors.primary}
-              />
-
-              <Text style={styles.syncWarningText}>
-                {refreshError} Showing the last saved update.
-              </Text>
-            </View>
-          )}
-
-          {order.status === 'cancelled' ? (
-            <View style={styles.cancelledCard}>
-              <Ionicons
-                name="close-circle-outline"
-                size={25}
-                color={colors.primary}
-              />
-
-              <View style={styles.cancelledContent}>
-                <Text style={styles.cancelledTitle}>
-                  Order cancelled
-                </Text>
-
-                <Text
-                  style={styles.cancelledDescription}
-                >
-                  This order is no longer active.
-                </Text>
-              </View>
-            </View>
-          ) : (
-            <>
-              <Text style={styles.sectionTitle}>
-                Order status
-              </Text>
-
-              <View style={styles.timelineCard}>
-                {timeline.map((step, index) => {
-                  const complete =
-                    index <= currentIndex;
-
-                  const current =
-                    index === currentIndex;
-
-                  const last =
-                    index ===
-                    timeline.length - 1;
-
-                  return (
-                    <View
-                      key={step.status}
-                      style={styles.timelineRow}
-                    >
-                      <View
-                        style={styles.timelineIndicator}
-                      >
-                        <View
-                          style={[
-                            styles.timelineCircle,
-                            complete &&
-                              styles.timelineCircleComplete,
-                            current &&
-                              styles.timelineCircleCurrent,
-                          ]}
-                        >
-                          <Ionicons
-                            name={step.icon}
-                            size={16}
-                            color={
-                              complete
-                                ? '#FFFFFF'
-                                : '#A7A7AD'
-                            }
-                          />
-                        </View>
-
-                        {!last && (
-                          <View
-                            style={[
-                              styles.timelineLine,
-                              index < currentIndex &&
-                                styles.timelineLineComplete,
-                            ]}
-                          />
-                        )}
-                      </View>
-
-                      <View
-                        style={[
-                          styles.timelineContent,
-                          !last &&
-                            styles.timelineContentSpacing,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.timelineTitle,
-                            !complete &&
-                              styles.timelineTitleInactive,
-                          ]}
-                        >
-                          {step.title}
-                        </Text>
-
-                        <Text
-                          style={
-                            styles.timelineDescription
-                          }
-                        >
-                          {step.description}
-                        </Text>
-
-                        {current && (
-                          <View
-                            style={styles.currentBadge}
-                          >
-                            <Text
-                              style={
-                                styles.currentBadgeText
-                              }
-                            >
-                              CURRENT
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </>
-          )}
-
-          {order.driver && (
-            <>
-              <Text style={styles.sectionTitle}>
-                Your driver
-              </Text>
-
-              <View style={styles.driverCard}>
-                <View style={styles.driverAvatar}>
-                  <Ionicons
-                    name="person"
-                    size={22}
-                    color="#FFFFFF"
-                  />
-                </View>
-
-                <View style={styles.driverContent}>
-                  <Text style={styles.driverName}>
-                    {order.driver.name}
-                  </Text>
-
-                  <Text style={styles.driverMeta}>
-                    {order.driver.code} ·{' '}
-                    {getHeroMessage(order.status)}
-                  </Text>
-                </View>
-
-                <View style={styles.driverLiveBadge}>
-                  <View style={styles.driverLiveDot} />
-                  <Text style={styles.driverLiveText}>
-                    LIVE
-                  </Text>
-                </View>
-              </View>
-            </>
-          )}
-
-          <Text style={styles.sectionTitle}>
-            Delivery details
-          </Text>
-
-          <View style={styles.infoCard}>
-            <View style={styles.infoRow}>
-              <View style={styles.infoIcon}>
-                <Ionicons
-                  name="location-outline"
-                  size={20}
-                  color={colors.primary}
-                />
-              </View>
-
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>
-                  DELIVERING TO
-                </Text>
-
-                <Text style={styles.infoTitle}>
-                  {order.address.label}
-                </Text>
-
-                <Text style={styles.infoDescription}>
-                  {order.address.address}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.infoDivider} />
-
-            <View style={styles.infoRow}>
-              <View style={styles.infoIcon}>
-                <Ionicons
-                  name="card-outline"
-                  size={20}
-                  color={colors.primary}
-                />
-              </View>
-
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>
-                  PAYMENT
-                </Text>
-
-                <Text style={styles.infoTitle}>
-                  {order.paymentMethod.label}
-                </Text>
-
-                <Text style={styles.infoDescription}>
-                  {order.paymentMethod.detail}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <Text style={styles.sectionTitle}>
-            Order summary
-          </Text>
-
-          <View style={styles.summaryCard}>
-            {order.items.map((item) => (
-              <View
-                key={item.id}
-                style={styles.itemRow}
-              >
-                <View style={styles.quantityBadge}>
-                  <Text style={styles.quantityText}>
-                    {item.quantity}Ã—
-                  </Text>
-                </View>
-
-                <View style={styles.itemInfo}>
-                  <Text style={styles.itemName}>
-                    {item.name}
-                  </Text>
-
-                  <Text style={styles.itemOptions}>
-                    {item.size}
-                    {item.extras.length > 0
-                      ? ` â€¢ ${item.extras
-                          .map(
-                            (extra) =>
-                              extra.name,
-                          )
-                          .join(', ')}`
-                      : ''}
-                  </Text>
-                </View>
-
-                <Text style={styles.itemPrice}>
-                  ${item.totalPrice.toFixed(2)}
-                </Text>
-              </View>
-            ))}
-
-            <View style={styles.summaryDivider} />
-
-            <View style={styles.priceRow}>
-              <Text style={styles.priceLabel}>
-                Subtotal
-              </Text>
-
-              <Text style={styles.priceValue}>
-                ${order.subtotal.toFixed(2)}
-              </Text>
-            </View>
-
-            <View style={styles.priceRow}>
-              <Text style={styles.priceLabel}>
-                Delivery
-              </Text>
-
-              <Text style={styles.priceValue}>
-                ${order.deliveryFee.toFixed(2)}
-              </Text>
-            </View>
-
-            <View style={styles.totalDivider} />
-
-            <View style={styles.priceRow}>
-              <Text style={styles.totalLabel}>
-                Total
-              </Text>
-
-              <Text style={styles.totalValue}>
-                ${order.total.toFixed(2)}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.bottomSpace} />
-        </ScrollView>
-      </SafeAreaView>
-    </View>
-  );
+  return <TrackingExperience order={order} refreshing={refreshing} onRefresh={() => void manualRefresh()}
+    updatedAt={updatedAt} refreshError={refreshError} preview={preview} />;
 }
 
 const styles = StyleSheet.create({
@@ -695,12 +338,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
 
+  stageContainer: { backgroundColor: '#140E0A' },
+  stageButton: { backgroundColor: 'rgba(20,14,10,0.55)', borderColor: 'rgba(233,211,174,0.35)' },
+  stageHeaderTitle: { color: colors.onDark },
+  sheet: { backgroundColor: colors.background, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingTop: 10, minHeight: 600 },
+  sheetHandle: { alignSelf: 'center', width: 44, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: 14 },
+  statusCard: { marginTop: 6, padding: 18, gap: 10, borderRadius: radius.xxl, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  statusEyebrow: { fontFamily: fonts.bold, fontSize: 10, letterSpacing: 1.5, color: colors.primary },
+  statusMessage: { fontFamily: fonts.heading, fontSize: 22, lineHeight: 28, color: colors.text },
+  statusTrack: { height: 6, borderRadius: 3, backgroundColor: colors.surfaceSecondary, overflow: 'hidden' },
+  statusFill: { height: '100%', borderRadius: 3, backgroundColor: colors.primary },
+  previewPanel: { marginTop: 14, padding: 14, gap: 10, borderRadius: radius.xxl, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border },
+
   safeArea: {
     flex: 1,
   },
 
   header: {
-    height: 64,
+    minHeight: 64,
     paddingHorizontal: spacing.xl,
     flexDirection: 'row',
     alignItems: 'center',
@@ -730,8 +385,9 @@ const styles = StyleSheet.create({
   },
 
   headerTitle: {
+    fontFamily: fonts.heading,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
@@ -741,6 +397,10 @@ const styles = StyleSheet.create({
 
   content: {
     paddingHorizontal: spacing.xl,
+    paddingBottom: 28,
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'center',
   },
 
   heroCard: {
@@ -751,23 +411,26 @@ const styles = StyleSheet.create({
   },
 
   heroTop: {
+    gap: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
 
   heroLabel: {
-    color: '#A8A8AD',
+    fontFamily: fonts.heavy,
+    color: colors.gold,
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: '400',
     letterSpacing: 1.2,
   },
 
   heroTime: {
+    fontFamily: fonts.heavy,
     marginTop: 4,
-    color: '#FFFFFF',
+    color: colors.surface,
     fontSize: 28,
-    fontWeight: '800',
+    fontWeight: '400',
   },
 
   deliveryIcon: {
@@ -780,8 +443,9 @@ const styles = StyleSheet.create({
   },
 
   heroMessage: {
+    fontFamily: fonts.body,
     marginTop: 16,
-    color: '#D1D1D5',
+    color: '#D6C5B0',
     fontSize: 13,
   },
 
@@ -789,7 +453,7 @@ const styles = StyleSheet.create({
     height: 5,
     marginTop: 18,
     borderRadius: 3,
-    backgroundColor: '#2B2B30',
+    backgroundColor: '#433323',
     overflow: 'hidden',
   },
 
@@ -800,23 +464,25 @@ const styles = StyleSheet.create({
   },
 
   orderId: {
+    fontFamily: fonts.bold,
     marginTop: 12,
-    color: '#818187',
+    color: '#C9B69B',
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '400',
   },
 
   syncWarning: {
     marginTop: 12,
     padding: 12,
     borderRadius: radius.lg,
-    backgroundColor: '#FFF0EA',
+    backgroundColor: colors.surfaceSecondary,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 9,
   },
 
   syncWarningText: {
+    fontFamily: fonts.body,
     flex: 1,
     color: colors.textSecondary,
     fontSize: 11,
@@ -824,10 +490,11 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
+    fontFamily: fonts.heading,
     marginTop: 27,
     marginBottom: 13,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
@@ -849,10 +516,10 @@ const styles = StyleSheet.create({
   },
 
   timelineCircle: {
-    width: 34,
-    height: 34,
+    width: 44,
+    height: 44,
     borderRadius: 17,
-    backgroundColor: '#EFEFF1',
+    backgroundColor: colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -863,14 +530,14 @@ const styles = StyleSheet.create({
 
   timelineCircleCurrent: {
     borderWidth: 4,
-    borderColor: '#FFD9CA',
+    borderColor: colors.border,
   },
 
   timelineLine: {
     width: 2,
     flex: 1,
     minHeight: 39,
-    backgroundColor: '#E4E4E7',
+    backgroundColor: colors.border,
   },
 
   timelineLineComplete: {
@@ -888,16 +555,18 @@ const styles = StyleSheet.create({
   },
 
   timelineTitle: {
+    fontFamily: fonts.heavy,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
   timelineTitleInactive: {
-    color: '#A0A0A5',
+    color: colors.textSecondary,
   },
 
   timelineDescription: {
+    fontFamily: fonts.body,
     marginTop: 4,
     fontSize: 11,
     lineHeight: 16,
@@ -910,12 +579,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 10,
-    backgroundColor: '#FFF0EA',
+    backgroundColor: colors.surfaceSecondary,
   },
 
   currentBadgeText: {
+    fontFamily: fonts.heavy,
     fontSize: 8,
-    fontWeight: '800',
+    fontWeight: '400',
     letterSpacing: 0.8,
     color: colors.primary,
   },
@@ -945,12 +615,14 @@ const styles = StyleSheet.create({
   },
 
   driverName: {
+    fontFamily: fonts.heavy,
     color: colors.text,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '400',
   },
 
   driverMeta: {
+    fontFamily: fonts.body,
     marginTop: 4,
     color: colors.textSecondary,
     fontSize: 10,
@@ -961,7 +633,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 6,
     borderRadius: radius.pill,
-    backgroundColor: '#EFFAF4',
+    backgroundColor: '#E8EDDF',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -971,13 +643,14 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#2E9D63',
+    backgroundColor: colors.success,
   },
 
   driverLiveText: {
-    color: '#2E9D63',
+    fontFamily: fonts.heavy,
+    color: colors.success,
     fontSize: 8,
-    fontWeight: '800',
+    fontWeight: '400',
     letterSpacing: 0.7,
   },
 
@@ -998,7 +671,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#FFF0EA',
+    backgroundColor: colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1009,20 +682,23 @@ const styles = StyleSheet.create({
   },
 
   infoLabel: {
+    fontFamily: fonts.heavy,
     fontSize: 8,
-    fontWeight: '800',
+    fontWeight: '400',
     letterSpacing: 1,
     color: colors.textSecondary,
   },
 
   infoTitle: {
+    fontFamily: fonts.heavy,
     marginTop: 3,
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
   infoDescription: {
+    fontFamily: fonts.body,
     marginTop: 2,
     fontSize: 11,
     color: colors.textSecondary,
@@ -1053,14 +729,15 @@ const styles = StyleSheet.create({
     height: 30,
     paddingHorizontal: 6,
     borderRadius: 15,
-    backgroundColor: '#FFF0EA',
+    backgroundColor: colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   quantityText: {
+    fontFamily: fonts.heavy,
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.primary,
   },
 
@@ -1070,12 +747,14 @@ const styles = StyleSheet.create({
   },
 
   itemName: {
+    fontFamily: fonts.heavy,
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
   itemOptions: {
+    fontFamily: fonts.body,
     marginTop: 3,
     fontSize: 10,
     lineHeight: 15,
@@ -1083,8 +762,9 @@ const styles = StyleSheet.create({
   },
 
   itemPrice: {
+    fontFamily: fonts.heavy,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
@@ -1101,13 +781,15 @@ const styles = StyleSheet.create({
   },
 
   priceLabel: {
+    fontFamily: fonts.body,
     fontSize: 12,
     color: colors.textSecondary,
   },
 
   priceValue: {
+    fontFamily: fonts.bold,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.text,
   },
 
@@ -1118,14 +800,16 @@ const styles = StyleSheet.create({
   },
 
   totalLabel: {
+    fontFamily: fonts.heavy,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
   totalValue: {
+    fontFamily: fonts.heavy,
     fontSize: 17,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.primary,
   },
 
@@ -1145,19 +829,20 @@ const styles = StyleSheet.create({
   },
 
   devButtonActive: {
-    backgroundColor: colors.black,
-    borderColor: colors.black,
+    backgroundColor: colors.cta,
+    borderColor: colors.ctaBorder,
   },
 
   devButtonText: {
+    fontFamily: fonts.heavy,
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.textSecondary,
     textTransform: 'capitalize',
   },
 
   devButtonTextActive: {
-    color: '#FFFFFF',
+    color: colors.surface,
   },
   cancelledCard: {
     marginTop: 24,
@@ -1175,12 +860,14 @@ const styles = StyleSheet.create({
   },
 
   cancelledTitle: {
+    fontFamily: fonts.heavy,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
   cancelledDescription: {
+    fontFamily: fonts.body,
     marginTop: 4,
     fontSize: 12,
     color: colors.textSecondary,
@@ -1193,9 +880,10 @@ const styles = StyleSheet.create({
   },
 
   notFoundTitle: {
+    fontFamily: fonts.heavy,
     marginTop: 14,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
@@ -1204,13 +892,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 11,
     borderRadius: radius.pill,
-    backgroundColor: colors.black,
+    backgroundColor: colors.cta,
   },
 
   retryButtonText: {
-    color: '#FFFFFF',
+    fontFamily: fonts.heavy,
+    color: colors.surface,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '400',
   },
 
   bottomSpace: {

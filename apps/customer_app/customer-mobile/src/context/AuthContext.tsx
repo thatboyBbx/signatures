@@ -24,6 +24,7 @@ type SignUpInput = {
 type AuthContextValue = {
   customer: Customer | null;
   loading: boolean;
+  startPreview: () => void;
   signIn: (
     email: string,
     password: string,
@@ -108,11 +109,17 @@ export function AuthProvider({
     setCustomer(null);
   };
 
+  const startPreview = () => {
+    if (process.env.EXPO_PUBLIC_UI_PREVIEW !== '1') return;
+    setCustomer({ id: 'ui-preview', email: null, phone: null, fullName: 'UI preview' });
+  };
+
   return (
     <AuthContext.Provider
       value={{
         customer,
         loading,
+        startPreview,
         signIn,
         signUp,
         signOut,

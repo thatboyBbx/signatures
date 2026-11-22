@@ -1,7 +1,8 @@
+import { ParamountPressable as Pressable } from '../../../components/ParamountPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import {
-  Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -13,26 +14,14 @@ import {
   useCheckout,
 } from '../../../context/CheckoutContext';
 
-import { colors, radius, spacing } from '../../../theme/theme';
+import { colors, radius, spacing, fonts } from '../../../theme/theme';
 
 const methods: PaymentMethod[] = [
   {
     id: 'cash',
-    label: 'Cash on delivery',
-    detail: 'Pay when your order arrives',
+    label: 'Cash',
+    detail: 'Pay on delivery or at branch collection',
     icon: 'cash-outline',
-  },
-  {
-    id: 'mobile',
-    label: 'Mobile payment',
-    detail: 'Pay using supported mobile money',
-    icon: 'phone-portrait-outline',
-  },
-  {
-    id: 'card',
-    label: 'Debit or credit card',
-    detail: 'Visa or Mastercard',
-    icon: 'card-outline',
   },
 ];
 
@@ -53,6 +42,8 @@ export function PaymentScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Pressable
+          accessibilityLabel="Back"
+          accessibilityRole="button"
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
@@ -70,7 +61,7 @@ export function PaymentScreen() {
         <View style={{ width: 44 }} />
       </View>
 
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.heading}>
           How would you like to pay?
         </Text>
@@ -105,7 +96,7 @@ export function PaymentScreen() {
                     size={22}
                     color={
                       selected
-                        ? '#FFFFFF'
+                        ? colors.surface
                         : colors.primary
                     }
                   />
@@ -138,7 +129,7 @@ export function PaymentScreen() {
             );
           })}
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -150,7 +141,7 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    height: 64,
+    minHeight: 64,
     paddingHorizontal: spacing.xl,
     flexDirection: 'row',
     alignItems: 'center',
@@ -169,8 +160,9 @@ const styles = StyleSheet.create({
   },
 
   title: {
+    fontFamily: fonts.heading,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
@@ -179,13 +171,15 @@ const styles = StyleSheet.create({
   },
 
   heading: {
+    fontFamily: fonts.heading,
     fontSize: 26,
     lineHeight: 32,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
   description: {
+    fontFamily: fonts.body,
     marginTop: 7,
     fontSize: 14,
     color: colors.textSecondary,
@@ -215,7 +209,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#FFF0EA',
+    backgroundColor: colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -230,12 +224,14 @@ const styles = StyleSheet.create({
   },
 
   methodName: {
+    fontFamily: fonts.heavy,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '400',
     color: colors.text,
   },
 
   methodDetail: {
+    fontFamily: fonts.body,
     marginTop: 4,
     fontSize: 12,
     color: colors.textSecondary,
